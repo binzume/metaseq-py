@@ -104,7 +104,7 @@ class MQMaterial(AttrObj):
     return self._bumpMap
 
   def __str__(self):
-    return '"' + self._name + '" ' + ' '.join([ x+"(" + str(self._attrs[x]) + ")" for x in self._attrs])
+    return '"' + self._name + '" ' + ' '.join([ x+"(" + str(self._attrs[x]) + ")" for x in self._attrs if x is not None])
 
   #!! properties_begin
   @property
@@ -317,10 +317,11 @@ class MQScene(AttrObj):
     self._rotation_center = MQPoint(0,0,0)
     #!! end
 
-  def setCameraPos(self, pos):
-    self._camera_pos = pos
   def getCameraPos(self):
     return self._camera_pos
+  def setCameraPos(self, pos):
+    self._camera_pos = pos
+    self._attrs['pos'] = str(pos)
   def getCameraAngle(self):
     return self._camera_angle
   def getLookAtPos(self):
@@ -329,6 +330,7 @@ class MQScene(AttrObj):
     return None
   def setLookAtPos(self, pos, v):
     self._look_at_pos = pos
+    self._attrs['lookat'] = str(pos)
   def getRotationCenter(self):
     return self._rotation_center
 
@@ -529,6 +531,12 @@ class MQObject(AttrObj):
     self._attrs['translation'] = str(v)
 
   #!! end
+  @property
+  def numVertex(self):
+    return len(self._vertex)
+  @property
+  def numFace(self):
+    return len(self._face)
 
 
 class MQPoint:
@@ -570,6 +578,18 @@ class MQAngle:
     return ' '.join([ str(self.head),str(self.pitch),str(self.bank) ])
   #!! end
 
+class MQVertex:
+  #!! begin_struct pos
+  def __init__(self, pos):
+    self.pos = pos
+  def __str__(self):
+    return ' '.join([ str(self.pos) ])
+  #!! end
+  def getPos(self):
+    return self.pos
+  def setPos(self, pos):
+    self.pos = pos
+
 class MQMatrix:
   def get(self, r,c):
     return 0.0 # dummy
@@ -591,29 +611,28 @@ class MQOReader:
         if chunk == "scene":
           doc._scene.append(cls.scene(it))
         if chunk == "material":
-          doc.material = cls.material(it, int(s[1]))
+          doc.material = cls.materials(it, int(s[1]))
         if chunk == "object":
           doc.object.append(cls.object(it, s[1]))
+          doc.object[-1]._line = ln
     return doc
   @classmethod
   def scene(cls, line_iter):
     attrs = []
     for ln,line in line_iter:
       line = line.strip()
-      if line == '}':
-        break
+      if line == '}': break
       if line.endswith('{'):
         cls.skip(line_iter)
       s = re.split('\s+', line, 1)
       attrs.append((s[0],s[1]))
     return MQScene(attrs)
   @classmethod
-  def material(cls, line_iter, num):
+  def materials(cls, line_iter, num):
     mats = []
     for ln,line in line_iter:
       line = line.strip()
-      if line == '}':
-        break
+      if line == '}': break
       s = re.split('\s+', line, 1)
       attrs = [x.strip().split('(', 1) for x in s[1].split(')')]
       mats.append(MQMaterial(s[0].strip('"'), [(x[0], x[1]) for x in attrs if len(x)==2]))
@@ -622,41 +641,114 @@ class MQOReader:
   @classmethod
   def object(cls, line_iter, name):
     attrs = []
+    verts = []
     for ln,line in line_iter:
       line = line.strip()
-      if line == '}':
-        break
+      if line == '}': break
       if line.endswith('{'):
-        cls.skip(line_iter)
+        s = re.split('\s+', line, 2)
+        chunk = s[0].lower()
+        if chunk == "vertex":
+          verts = cls.vertex(line_iter)
+        else:
+          cls.skip(line_iter)
       s = re.split('\s+', line, 1)
       attrs.append((s[0],s[1]))
-    return MQObject(name, attrs)
-
+    obj = MQObject(name, attrs)
+    obj._vertex = verts
+    return obj
+  @classmethod
+  def vertex(cls, line_iter):
+    verts = []
+    for ln,line in line_iter:
+      line = line.strip()
+      if line == '}': break
+      if line.endswith('{'):
+        cls.skip(line_iter)
+      pos = [float(x) for x in re.split('\s+', line)]
+      verts.append(MQVertex(MQPoint(pos[0],pos[1],pos[2])))
+    return verts
   @classmethod
   def skip(cls, line_iter):
     for ln,line in line_iter:
       line = line.strip()
-      if line == '}':
-        break
+      if line == '}' : break
       if line.endswith('{'):
         cls.skip(line_iter)
 
 class MQOWriter:
   @classmethod
   def save(cls, filename, doc):
-    linemap = {}
-    for mat in doc.material:
-      if mat._line is not None:
-        if linemap.get(mat._line) is None:
-          linemap[mat._line] = []
-        linemap[mat._line].append(mat)
     f = open(filename, 'wb')
-    for ln,line in enumerate(doc._mqolines):
-      if linemap.get(ln) is not None:
-        m = re.match(r'^(\s*).*?(\s+)$',line)
-        for x in linemap[ln]:
-          f.write(m.group(1) + str(x) + m.group(2))
-      else:
+    line_iter = enumerate(doc._mqolines)
+    scenecount = 0
+    objcount = 0
+    for ln,line in line_iter:
+      line2 = line.strip()
+      if line2.endswith('{'):
+        s = re.split('\s+', line2, 2)
+        chunk = s[0].lower()
         f.write(line)
+        if chunk == "material":
+          cls.materials(line_iter, doc.material, f)
+        if chunk == "scene":
+          cls.scene(line_iter, doc.getScene(scenecount), f)
+          scenecount+=1
+        if chunk == "object":
+          cls.object(line_iter, doc.object[objcount], f)
+          objcount+=1
+        continue
+      f.write(line)
     return doc
-
+  @classmethod
+  def materials(cls, line_iter, mats, f):
+    s = ["\t","\r\n"]
+    for ln,line in line_iter:
+      if line.strip() == '}' : break
+      m = re.match(r'^(\s*).*?(\s+)$',line)
+      s = [m.group(1), m.group(2)]
+    for m in mats:
+      f.write(s[0] + str(m) + s[1])
+    f.write(line)
+  @classmethod
+  def scene(cls, line_iter, scene, f):
+    s = ["\t","\n"]
+    for ln,line in line_iter:
+      line2 = line.strip()
+      if line2 == '}': break
+      if line2.endswith('{'):
+        f.write(line)
+        cls.copy(line_iter, f)
+        continue
+      s = re.split('\s+', line2, 1)
+      if s[1] == str(scene._attrs.get(s[0])):
+        f.write(line)
+      else:
+        m = re.match(r'^(\s*[^\s]+\s+).*?(\s+)$',line)
+        f.write(m.group(1) + str(scene._attrs.get(s[0])) +  m.group(2))
+    f.write(line)
+  @classmethod
+  def object(cls, line_iter, obj, f):
+    s = ["\t","\n"]
+    for ln,line in line_iter:
+      line2 = line.strip()
+      if line2 == '}': break
+      if line2.endswith('{'):
+        f.write(line)
+        cls.copy(line_iter, f)
+        continue
+      s = re.split('\s+', line2, 1)
+      if s[1] == str(obj._attrs.get(s[0])):
+        f.write(line)
+      else:
+        m = re.match(r'^(\s*[^\s]+\s+).*?(\s+)$',line)
+        f.write(m.group(1) + str(obj._attrs.get(s[0])) +  m.group(2))
+    f.write(line)
+  @classmethod
+  def copy(cls, line_iter, f):
+    for ln,line in line_iter:
+      f.write(line)
+      line = line.strip()
+      if line == '}': break
+      if line.endswith('{'):
+        cls.copy(line_iter,f)

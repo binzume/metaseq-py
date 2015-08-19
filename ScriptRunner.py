@@ -47,11 +47,16 @@ class Script:
 
 if __name__ == "__main__":
   if len(sys.argv) < 2:
-    print("usage: {s} SCRIPT.py INPUT.mqo".format(s = sys.argv[0]))
+    print("usage: {s} INPUT.mqo SCRIPT.py [SCRIPT2.py ...]".format(s = sys.argv[0]))
     exit(1)
   src_mqo_name = "in.mqo"
-  if len(sys.argv) > 2:
-    src_mqo_name = sys.argv[2]
+  scripts = []
+  for f in sys.argv[1:]:
+    if f.endswith('.mqo'):
+      src_mqo_name = f
+    else:
+      scripts.append(f)
   mq = MQSystemClass(src_mqo_name)
-  Script(sys.argv[1], mq).run()
+  for s in scripts:
+    Script(s, mq).run()
   mq.mqo_saveFile("out.mqo")
