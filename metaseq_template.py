@@ -205,83 +205,78 @@ class MQMatrix:
 class MQOReader:
   @classmethod
   def load(cls, filename):
-    doc = MQDocument()
     lines = open(filename, 'rb').readlines()
+    it = enumerate(lines)
+    doc = MQDocument()
     doc._mqolines = lines
     doc._scene = []
-    it = enumerate(lines)
-    for ln,line in it:
-      line = line.strip()
-      if line.endswith('{'):
-        s = re.split('\s+', line, 2)
-        chunk = s[0].lower()
-        if chunk == "scene":
-          doc._scene.append(cls.scene(it))
-        if chunk == "material":
-          doc.material = cls.materials(it, int(s[1]))
-        if chunk == "object":
-          doc.object.append(cls.object(it, s[1]))
-          doc.object[-1]._line = ln
+    map = {
+      "scene":    lambda it,ln,params: doc._scene.append(cls.scene(it)),
+      "material": lambda it,ln,params: doc.material.extend(cls.materials(it, int(params[1]))),
+      "object":   lambda it,ln,params: doc.object.append(cls.object(it, ln, params[1]))
+    }
+    cls.parse_chunk(it, map)
     return doc
+
   @classmethod
-  def scene(cls, line_iter):
+  def scene(cls, it):
     attrs = []
-    for ln,line in line_iter:
-      line = line.strip()
-      if line == '}': break
-      if line.endswith('{'):
-        cls.skip(line_iter)
-      s = re.split('\s+', line, 1)
-      attrs.append((s[0],s[1]))
+    map = {"_": lambda it,ln, line: attrs.append(tuple(re.split('\s+', line, 1)))}
+    cls.parse_chunk(it, map)
     return MQScene(attrs)
+
   @classmethod
-  def materials(cls, line_iter, num):
+  def materials(cls, it, num):
     mats = []
-    for ln,line in line_iter:
-      line = line.strip()
-      if line == '}': break
-      s = re.split('\s+', line, 1)
-      attrs = [x.strip().split('(', 1) for x in s[1].split(')')]
-      mats.append(MQMaterial(s[0].strip('"'), [(x[0], x[1]) for x in attrs if len(x)==2]))
-      mats[-1]._line = ln
+    map = {"_": lambda it,ln, line: mats.append(cls.material(line, ln))}
+    cls.parse_chunk(it, map)
     return mats
+
   @classmethod
-  def object(cls, line_iter, name):
+  def material(cls, line, ln):
+    s = re.split('\s+', line, 1)
+    attrs = [x.strip().split('(', 1) for x in s[1].split(')')]
+    m = MQMaterial(s[0].strip('"'), [(x[0], x[1]) for x in attrs if len(x)==2])
+    m._line = ln
+    return m
+
+  @classmethod
+  def object(cls, it, ln, name):
     attrs = []
     verts = []
-    for ln,line in line_iter:
-      line = line.strip()
-      if line == '}': break
-      if line.endswith('{'):
-        s = re.split('\s+', line, 2)
-        chunk = s[0].lower()
-        if chunk == "vertex":
-          verts = cls.vertex(line_iter)
-        else:
-          cls.skip(line_iter)
-      s = re.split('\s+', line, 1)
-      attrs.append((s[0],s[1]))
+    map = {
+      "vertex": lambda it,ln,params: verts.extend(cls.vertex(it)),
+      "_":      lambda it,ln,line: attrs.append(tuple(re.split('\s+', line, 1)))
+    }
+    cls.parse_chunk(it, map)
     obj = MQObject(name, attrs)
     obj._vertex = verts
+    obj._line = ln
     return obj
   @classmethod
-  def vertex(cls, line_iter):
+
+  def vertex(cls, it):
     verts = []
+    map = {
+      "_": lambda it,ln,line: verts.append(MQVertex(MQPoint(*[float(x) for x in re.split('\s+', line)])))
+    }
+    cls.parse_chunk(it, map)
+    return verts
+
+  @classmethod
+  def parse_chunk(cls, line_iter, map):
     for ln,line in line_iter:
       line = line.strip()
       if line == '}': break
       if line.endswith('{'):
-        cls.skip(line_iter)
-      pos = [float(x) for x in re.split('\s+', line)]
-      verts.append(MQVertex(MQPoint(pos[0],pos[1],pos[2])))
-    return verts
-  @classmethod
-  def skip(cls, line_iter):
-    for ln,line in line_iter:
-      line = line.strip()
-      if line == '}' : break
-      if line.endswith('{'):
-        cls.skip(line_iter)
+        s = re.split('\s+', line, 2)
+        chunk = s[0].lower()
+        if map.has_key(chunk):
+          map[chunk](line_iter, ln, s)
+        else:
+          cls.parse_chunk(line_iter, {})
+        continue
+      if map.has_key('_'): map['_'](line_iter, ln, line)
 
 class MQOWriter:
   @classmethod

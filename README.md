@@ -36,3 +36,11 @@ metaseq.pyを生成するRubyスクリプトです．metaseq.pyは元々Rubyで�
 - 保存ファイル名
 - gen_metaseqをPythonに
 
+## License
+
+
+MIT License
+
+
+
+
