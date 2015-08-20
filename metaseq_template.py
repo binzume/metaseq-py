@@ -3,6 +3,9 @@ import re
 from collections import *
 
 class AttrObj(object):
+  def __init__(self, attrs=[], line = None):
+    self._attrs = OrderedDict(attrs)
+    self._line = line
   def apply_or_def(_s, f, v, default):
     return f(v) if v is not None else default
   def attr_i(self, name, default = None):
@@ -11,15 +14,15 @@ class AttrObj(object):
     return self.apply_or_def((lambda v:float(v)), self._attrs.get(name), default)
   def attr_s(self, name, default = None):
     return self.apply_or_def((lambda v:str(v).strip("\"")), self._attrs.get(name), default)
-  def attr_fa(self, name, num, default = None):
+  def attr_fa(self, name, default = None, num = 1):
     f = (lambda v: [float(x) for x in re.split('\s+', v.strip(), num-1)] )
     return self.apply_or_def(f, self._attrs.get(name), default)
   def attr_p(self, name, default = None):
-    return self.apply_or_def((lambda v: MQPoint(v[0],v[2],v[2])), self.attr_fa(name, 3), default)
+    return self.apply_or_def((lambda v: MQPoint(v[0],v[2],v[2])), self.attr_fa(name, None, 3), default)
   def attr_c(self, name, default = None):
-    return self.apply_or_def((lambda v: MQColor(v[0],v[2],v[2])), self.attr_fa(name, 3), default)
+    return self.apply_or_def((lambda v: MQColor(v[0],v[2],v[2])), self.attr_fa(name, None, 3), default)
   def attr_a(self, name, default = None):
-    return self.apply_or_def((lambda v: MQAngle(v[0],v[2],v[2])), self.attr_fa(name, 3), default)
+    return self.apply_or_def((lambda v: MQAngle(v[0],v[2],v[2])), self.attr_fa(name, None, 3), default)
 
 class MQDocument:
   def __init__(self):
@@ -67,9 +70,8 @@ class MQMaterial(AttrObj):
   #!! attr rw i vertexColor vcol 0
   #!! attr rw i doubleSided dbls 0
   def __init__(self, name, attrs = []):
-    self._line = None
-    self._attrs = OrderedDict(attrs)
-    col = self.attr_fa('col', 4, [0,0,0,0])
+    AttrObj.__init__(self, attrs)
+    col = self.attr_fa('col', [0,0,0,0], 4)
     #!! vars_begin self
     #!! end
 
@@ -114,8 +116,7 @@ class MQScene(AttrObj):
   #!! attr -  a camera_angle - MQAngle(self.attr_f('head',0),self.attr_f('pitch',0),self.attr_f('bank',0))
   #!! attr -  p rotation_center - MQPoint(0,0,0)
   def __init__(self, attrs = []):
-    self._line = None
-    self._attrs = OrderedDict(attrs)
+    AttrObj.__init__(self, attrs)
     #!! vars_begin self
     #!! end
 
@@ -158,8 +159,7 @@ class MQObject(AttrObj):
   #!! attr rw a  rotation rotation MQAngle(0,0,0)
   #!! attr rw p  translation translation MQPoint(0,0,0)
   def __init__(self, name = "", attrs=[]):
-    self._attrs = OrderedDict(attrs)
-    self._line = None
+    AttrObj.__init__(self, attrs)
     #!! vars_begin self
     #!! end
 
@@ -171,6 +171,23 @@ class MQObject(AttrObj):
   @property
   def numFace(self):
     return len(self._face)
+
+
+class MQFace(AttrObj):
+  #!! init
+  #!! attr r  i  id UID 0
+  #!! attr r  fa index V []
+  #!! attr r  i  material M None
+  #!! attr rw i  select - 0
+  def __init__(self, name = "", attrs=[]):
+    AttrObj.__init__(self, attrs)
+    #!! vars_begin self
+    #!! end
+  #!! properties_begin
+  #!! end
+  @property
+  def numVertex(self):
+    return len(self._index)
 
 
 class MQPoint:
@@ -244,17 +261,20 @@ class MQOReader:
   def object(cls, it, ln, name):
     attrs = []
     verts = []
+    face = []
     map = {
       "vertex": lambda it,ln,params: verts.extend(cls.vertex(it)),
+      "face":   lambda it,ln,params: face.extend(cls.face(it)),
       "_":      lambda it,ln,line: attrs.append(tuple(re.split('\s+', line, 1)))
     }
     cls.parse_chunk(it, map)
     obj = MQObject(name, attrs)
     obj._vertex = verts
+    obj._face = face
     obj._line = ln
     return obj
-  @classmethod
 
+  @classmethod
   def vertex(cls, it):
     verts = []
     map = {
@@ -262,6 +282,21 @@ class MQOReader:
     }
     cls.parse_chunk(it, map)
     return verts
+
+  @classmethod
+  def face(cls, it):
+    f = []
+    map = {"_": lambda it,ln, line: f.append(cls.face2(line, ln))}
+    cls.parse_chunk(it, map)
+    return f
+
+  @classmethod
+  def face2(cls, line, ln):
+    s = re.split('\s+', line, 1)
+    attrs = [x.strip().split('(', 1) for x in s[1].split(')')]
+    m = MQFace(s[0].strip('"'), [(x[0], x[1]) for x in attrs if len(x)==2])
+    m._line = ln
+    return m
 
   @classmethod
   def parse_chunk(cls, line_iter, map):
