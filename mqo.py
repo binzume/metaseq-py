@@ -1,4 +1,5 @@
 # coding: utf-8
+# MQO file Reader/Writer.
 from metaseq import *
 
 class MQOReader:
@@ -20,15 +21,14 @@ class MQOReader:
   @classmethod
   def scene(cls, it):
     attrs = []
-    map = {"_": lambda it,ln, line: attrs.append(tuple(re.split('\s+', line, 1)))}
-    cls.parse_chunk(it, map)
+    # DOTO dirlights
+    cls.parse_chunk(it, {"_": lambda it,ln, line: attrs.append(tuple(re.split('\s+', line, 1)))})
     return MQScene(attrs)
 
   @classmethod
   def materials(cls, it, num):
     mats = []
-    map = {"_": lambda it,ln, line: mats.append(cls.material(line, ln))}
-    cls.parse_chunk(it, map)
+    cls.parse_chunk(it, {"_": lambda it,ln, line: mats.append(cls.material(line, ln))})
     return mats
 
   @classmethod
@@ -44,9 +44,10 @@ class MQOReader:
     attrs = []
     verts = []
     face = []
+    # TODO vertexattr
     map = {
       "vertex": lambda it,ln,params: verts.extend(cls.vertex(it)),
-      "face":   lambda it,ln,params: face.extend(cls.face(it)),
+      "faces":   lambda it,ln,params: face.extend(cls.face(it)),
       "_":      lambda it,ln,line: attrs.append(tuple(re.split('\s+', line, 1)))
     }
     cls.parse_chunk(it, map)
@@ -66,14 +67,13 @@ class MQOReader:
     return verts
 
   @classmethod
-  def face(cls, it):
+  def faces(cls, it):
     f = []
-    map = {"_": lambda it,ln, line: f.append(cls.face2(line, ln))}
-    cls.parse_chunk(it, map)
+    cls.parse_chunk(it, {"_": lambda it,ln, line: f.append(cls.face(line, ln))})
     return f
 
   @classmethod
-  def face2(cls, line, ln):
+  def face(cls, line, ln):
     s = re.split('\s+', line, 1)
     attrs = [x.strip().split('(', 1) for x in s[1].split(')')]
     m = MQFace(s[0].strip('"'), [(x[0], x[1]) for x in attrs if len(x)==2])
@@ -100,28 +100,19 @@ class MQOWriter:
   def save(cls, filename, doc):
     f = open(filename, 'wb')
     line_iter = enumerate(doc._mqolines)
-    scenecount = 0
-    objcount = 0
-    for ln,line in line_iter:
-      line2 = line.strip()
-      if line2.endswith('{'):
-        s = re.split('\s+', line2, 2)
-        chunk = s[0].lower()
-        f.write(line)
-        if chunk == "material":
-          cls.materials(line_iter, doc.material, f)
-        if chunk == "scene":
-          cls.scene(line_iter, doc.getScene(scenecount), f)
-          scenecount+=1
-        if chunk == "object":
-          cls.object(line_iter, doc.object[objcount], f)
-          objcount+=1
-        continue
-      f.write(line)
+    scenes_it = iter(doc._scene)
+    objs_it = iter(doc.object)
+
+    map = {
+      "scene":    lambda it,ln,l,f: cls.scene(it, scenes_it.next(), f),
+      "material": lambda it,ln,l,f: cls.materials(it, doc.material, f),
+      "object":   lambda it,ln,l,f: cls.object(it, objs_it.next(), f)
+    }
+    cls.write_chunk(line_iter, map, f)
     return doc
   @classmethod
   def materials(cls, line_iter, mats, f):
-    s = ["\t","\r\n"]
+    s = ["\ta","\r\n"]
     for ln,line in line_iter:
       if line.strip() == '}' : break
       m = re.match(r'^(\s*).*?(\s+)$',line)
@@ -131,44 +122,46 @@ class MQOWriter:
     f.write(line)
   @classmethod
   def scene(cls, line_iter, scene, f):
-    s = ["\t","\n"]
-    for ln,line in line_iter:
+    def write_attr(it,ln,line,f):
       line2 = line.strip()
-      if line2 == '}': break
-      if line2.endswith('{'):
-        f.write(line)
-        cls.copy(line_iter, f)
-        continue
       s = re.split('\s+', line2, 1)
       if s[1] == str(scene._attrs.get(s[0])):
         f.write(line)
       else:
         m = re.match(r'^(\s*[^\s]+\s+).*?(\s+)$',line)
         f.write(m.group(1) + str(scene._attrs.get(s[0])) +  m.group(2))
-    f.write(line)
+    map = {
+      "_":    write_attr
+    }
+    cls.write_chunk(line_iter, map, f)
   @classmethod
   def object(cls, line_iter, obj, f):
-    s = ["\t","\n"]
-    for ln,line in line_iter:
+    def write_attr(it,ln,line,f):
       line2 = line.strip()
-      if line2 == '}': break
-      if line2.endswith('{'):
-        f.write(line)
-        cls.copy(line_iter, f)
-        continue
       s = re.split('\s+', line2, 1)
       if s[1] == str(obj._attrs.get(s[0])):
         f.write(line)
       else:
         m = re.match(r'^(\s*[^\s]+\s+).*?(\s+)$',line)
         f.write(m.group(1) + str(obj._attrs.get(s[0])) +  m.group(2))
-    f.write(line)
-  @classmethod
-  def copy(cls, line_iter, f):
-    for ln,line in line_iter:
-      f.write(line)
-      line = line.strip()
-      if line == '}': break
-      if line.endswith('{'):
-        cls.copy(line_iter,f)
+    map = {
+      #"vertex": write_verts,
+      #"faces":  write_faces,
+      "_":      write_attr
+    }
+    cls.write_chunk(line_iter, map, f)
 
+  @classmethod
+  def write_chunk(cls, line_iter, map, f):
+    for ln,line in line_iter:
+      line2 = line.strip()
+      if line2 == '}':
+        f.write(line)
+        break
+      if line2.endswith('{'):
+        f.write(line) # TODO: write in chunk.
+        s = re.split('\s+', line, 2)
+        chunk = s[0].lower()
+        (map.get(chunk) or (lambda i,ln,l,f: cls.write_chunk(i, {}, f)))(line_iter, ln, line, f)
+        continue
+      (map.get('_') or (lambda i,ln,l,f: f.write(l)))(line_iter, ln, line, f)

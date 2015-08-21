@@ -628,6 +628,7 @@ class MQVertex:
   def getPos(self):
     return self.pos
   def setPos(self, pos):
+    self._modified = True
     self.pos = pos
 
 class MQMatrix:
