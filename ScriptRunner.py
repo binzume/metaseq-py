@@ -2,6 +2,7 @@
 # coding: utf-8
 import sys
 from metaseq import *
+from mqo import *
 
 class MQSystemClass:
 
@@ -47,11 +48,19 @@ class Script:
 
 if __name__ == "__main__":
   if len(sys.argv) < 2:
-    print("usage: {s} INPUT.mqo SCRIPT.py [SCRIPT2.py ...]".format(s = sys.argv[0]))
+    print("usage: {s} [-o OUTPUT.mqo] INPUT.mqo SCRIPT.py [SCRIPT2.py ...]".format(s = sys.argv[0]))
     exit(1)
   src_mqo_name = "in.mqo"
+  dst_mqo_name = "out.mqo"
   scripts = []
-  for f in sys.argv[1:]:
+  it = iter(sys.argv[1:])
+  for f in it:
+    if f == '-o' :
+      dst_mqo_name = it.next()
+      continue
+    if f == '-i' :
+      src_mqo_name = it.next()
+      continue
     if f.endswith('.mqo'):
       src_mqo_name = f
     else:
@@ -59,4 +68,4 @@ if __name__ == "__main__":
   mq = MQSystemClass(src_mqo_name)
   for s in scripts:
     Script(s, mq).run()
-  mq.mqo_saveFile("out.mqo")
+  mq.mqo_saveFile(dst_mqo_name)
