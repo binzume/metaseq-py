@@ -12,12 +12,16 @@ load → 操作 → save した場合に，
 ## ScriptRunner.py
 
 ```
-usage: python ScriptRunner.py INPUT.mqo SCRIPT.py [SCRIPT2.py ...]
+usage: python ScriptRunner.py [-o OUTPUT.mqo] INPUT.mqo SCRIPT.py [SCRIPT2.py ...]
+      -o OUTPUT.mqo Output file path. (Default out.mqo)
+      INPUT.mqo Input file path. (Default in.mqo)
+      SCRIPT[1...n].mqo Metasequoia Python script.
 ```
+
 
 メタセコイア向けに書かれたスクリプトの一部機能を実行できます(対応してない機能多いです)．
 
-たとえば，メタセコイアのインストールしたディレクトリにある `camera.py` を実行するには下記のように呼び出します．
+たとえば，メタセコイアをインストールしたディレクトリにある `camera.py` を実行するには下記のように呼び出します．
 
 ```
 python ScriptRunner.py sample.mqo "C:\Program Files\tetraface\Metasequoia4\Script\camera.py"
@@ -30,10 +34,14 @@ sample.mqoを読み込み，カメラの位置などを表示し，カメラ位�
 
 metaseq.pyを生成するRubyスクリプトです．metaseq.pyは元々Rubyで作っていたツールをもとにしているためRubyです．
 
+
+## Library API
+
+T.B.D.
+
 ## TODO:
 
 - Object編集
-- 保存ファイル名
 - gen_metaseqをPythonに
 
 ## License
