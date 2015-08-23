@@ -47,7 +47,7 @@ class MQOReader:
     # TODO vertexattr
     map = {
       "vertex": lambda it,ln,params: verts.extend(cls.vertex(it)),
-      "faces":   lambda it,ln,params: face.extend(cls.face(it)),
+      "face":   lambda it,ln,params: face.extend(cls.faces(it)),
       "_":      lambda it,ln,line: attrs.append(tuple(re.split('\s+', line, 1)))
     }
     cls.parse_chunk(it, map)
@@ -145,9 +145,28 @@ class MQOWriter:
         m = re.match(r'^(\s*[^\s]+\s+).*?(\s+)$',line)
         f.write(m.group(1) + str(obj._attrs.get(s[0])) +  m.group(2))
     map = {
+      "vertex": lambda it,ln,l,f: cls.object_verts(it, obj, f),
+      #"faces":  object_faces,
+      "_":      write_attr
+    }
+    cls.write_chunk(line_iter, map, f)
+
+  @classmethod
+  def object_verts(cls, line_iter, obj, f):
+    varts_it = iter(obj.vertex)
+    def write_vert(it,ln,line,f):
+      line2 = line.strip()
+      s = re.split('\s+', line2, 1)
+      p = varts_it.next().getPos()
+      if [float(x) for x in re.split('\s+', line2)] == [p.x, p.y, p.z]:
+        f.write(line)
+      else:
+        m = re.match(r'^(\s*).*?(\s+)$', line)
+        f.write(m.group(1) + str(p) +  m.group(2))
+    map = {
       #"vertex": write_verts,
       #"faces":  write_faces,
-      "_":      write_attr
+      "_":      write_vert
     }
     cls.write_chunk(line_iter, map, f)
 
@@ -156,11 +175,12 @@ class MQOWriter:
     for ln,line in line_iter:
       line2 = line.strip()
       if line2 == '}':
+        if map.has_key('_close'): map['_end_chunk'](line_iter, ln, line, f)
         f.write(line)
         break
       if line2.endswith('{'):
         f.write(line) # TODO: write in chunk.
-        s = re.split('\s+', line, 2)
+        s = re.split('\s+', line2, 2)
         chunk = s[0].lower()
         (map.get(chunk) or (lambda i,ln,l,f: cls.write_chunk(i, {}, f)))(line_iter, ln, line, f)
         continue

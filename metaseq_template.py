@@ -17,6 +17,9 @@ class AttrObj(object):
   def attr_fa(self, name, default = None, num = 1):
     f = (lambda v: [float(x) for x in re.split('\s+', v.strip(), num-1)] )
     return self.apply_or_def(f, self._attrs.get(name), default)
+  def attr_ia(self, name, default = None, num = 1):
+    f = (lambda v: [int(x) for x in re.split('\s+', v.strip(), num-1)] )
+    return self.apply_or_def(f, self._attrs.get(name), default)
   def attr_p(self, name, default = None):
     return self.apply_or_def((lambda v: MQPoint(v[0],v[2],v[2])), self.attr_fa(name, None, 3), default)
   def attr_c(self, name, default = None):
@@ -176,7 +179,7 @@ class MQObject(AttrObj):
 class MQFace(AttrObj):
   #!! init
   #!! attr r  i  id UID 0
-  #!! attr r  fa index V []
+  #!! attr r  ia index V []
   #!! attr r  i  material M None
   #!! attr rw i  select - 0
   def __init__(self, name = "", attrs=[]):
