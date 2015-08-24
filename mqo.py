@@ -146,8 +146,8 @@ class MQOWriter:
         f.write(m.group(1) + str(obj._attrs.get(s[0])) +  m.group(2))
     map = {
       "vertex": lambda it,ln,l,f: cls.object_verts(it, obj, f),
-      #"faces":  object_faces,
-      "_":      write_attr
+      "face"  : lambda it,ln,l,f: cls.object_faces(it, obj, f),
+      "_"     : write_attr
     }
     cls.write_chunk(line_iter, map, f)
 
@@ -164,9 +164,21 @@ class MQOWriter:
         m = re.match(r'^(\s*).*?(\s+)$', line)
         f.write(m.group(1) + str(p) +  m.group(2))
     map = {
-      #"vertex": write_verts,
-      #"faces":  write_faces,
       "_":      write_vert
+    }
+    cls.write_chunk(line_iter, map, f)
+
+  @classmethod
+  def object_faces(cls, line_iter, obj, f):
+    faces_it = iter(obj.face)
+    def write_face(it,ln,line,f):
+      line2 = line.strip()
+      s = re.split('\s+', line2, 1)
+      face = faces_it.next()
+      m = re.match(r'^(\s*).*?(\s+)$', line)
+      f.write(m.group(1) + str(face) +  m.group(2))
+    map = {
+      "_":      write_face
     }
     cls.write_chunk(line_iter, map, f)
 

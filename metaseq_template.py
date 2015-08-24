@@ -191,6 +191,8 @@ class MQFace(AttrObj):
   @property
   def numVertex(self):
     return len(self._index)
+  def __str__(self):
+    return str(self.numVertex) + ' ' + ' '.join([ x+"(" + str(self._attrs[x]) + ")" for x in self._attrs if x is not None])
 
 
 class MQPoint:
